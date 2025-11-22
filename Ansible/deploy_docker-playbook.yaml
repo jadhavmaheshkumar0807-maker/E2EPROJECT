@@ -1,0 +1,35 @@
+---
+- hosts: appserver
+  name: "Deploying Demo Application"
+  become: yes
+  gather_facts: true  
+
+  tasks:
+    - name: Install Docker
+      yum: 
+        name='docker'
+        state='latest'
+      become: true
+
+    - name: Service Docker
+      service:
+        name=docker
+        state=started
+        enabled=yes
+      become: true
+
+    - name: add ec2-user to docker group
+      ansible.builtin.user:
+        name: ec2-user
+        group: docker
+        append: yes
+      become: true
+
+    - name: reset ssh connection to allow user to affect ec2-user
+      ansible.builtin.meta:
+        reset_connection
+      become: true
+
+    - name: Install demo app
+      shell: |
+        docker run -dit --rm -p 8080:8080 {{ image_name }}:{{ image_tag }}

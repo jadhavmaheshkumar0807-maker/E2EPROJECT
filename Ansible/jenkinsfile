@@ -1,0 +1,95 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage ('checkout code') {
+            steps {
+                echo 'checking out the code'
+                git branch: 'main', url: 
+            }
+        }
+
+        stage ('Build jar') {
+            steps {
+                echo 'building jar using maven'
+                sh 'cd Application && mvn clean package'
+            }
+        }
+
+        stage ('Sonar Scan') {
+            steps {
+                echo 'Validating the code by scanning with SonarQube'
+                sh '''
+                    cd Application
+                    mvn sonar:sonar \
+                     -Dsonar.host.url=http:// \
+                     -Dsonar.login=
+
+                '''
+            }
+        }
+
+        stage ('Building Docker Image') {
+            steps {
+                script {
+                    echo 'building docker Image'
+                    sh 'cd Application && docker build -t maheshkumar010/project:${BUILD_NUMBER} .'
+                }
+            }
+        }
+
+        stage ('Docker Image Scan') {
+            steps {
+                sh 'trivy image maheshkumar010/project:${BUILD_NUMBER}'
+            }
+        }
+
+        stage ('push image to Dockerhub') {
+            steps {
+                script{
+                    withCredentials([string(credentialsId: 'dockerhub', variable: 'dockerhub')]) {
+                        sh 'echo "${dockerhub}" | docker login -u devopshubg333 --password-stdin'
+                    }
+                    sh 'docker push maheshkumar010/project:${BUILD_NUMBER}'
+                }
+            }
+        }
+
+        stage ('update k8s deployment manifest file') {
+            environment {
+                GIT_REPO_NAME = "ANSIBLEPROJECT"
+                GIT_USER_NAME = "jadhavmaheshkumar0807-maker"
+            }
+            steps {
+                withCredentials([string(credentialsId: 'github', variable: 'GITHUB_TOKEN')]) {
+                sh '''
+                    git config user.email ""
+                    git config user.name "Mahesh"
+
+                    sed -i "s|project:.*|project:${BUILD_NUMBER}|g" Ansible/k8s_deployment.yaml
+
+                    git add .
+                    git commit -m "updating deployment image tag to version ${BUILD_NUMBER}"
+                    git push https://${GITHUB_TOKEN}@github.com/${GIT_USER_NAME}/${GIT_REPO_NAME}.git HEAD:main
+
+                    '''
+               }
+            }
+        }
+
+        stage ('k8s deployment through Ansible') {
+            steps {
+                script {
+                    ansiblePlaybook(
+                        credentialsId : 'ssh',
+                        disableHostKeyChecking: true,
+                        installation: 'ansible',
+                        inventory: '/etc/ansible/inventory',
+                        playbook: 'Ansible/Ansible-k8s-playbook.yaml'
+                    )
+                }
+            }
+        }
+   }
+}
