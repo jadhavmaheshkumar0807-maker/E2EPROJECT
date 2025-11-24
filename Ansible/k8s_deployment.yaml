@@ -21,7 +21,7 @@ spec:
     spec:
       containers:
         - name: myapp-cnt
-          image: maheshkumar010/project:19
+          image: maheshkumar010/project:20
           ports:
             - containerPort: 8080
 
